@@ -3,6 +3,7 @@ package sqlz
 import (
 	"database/sql"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
@@ -55,8 +56,16 @@ func (stmt *InsertStmt) Values(vals ...interface{}) *InsertStmt {
 
 // ValueMap receives a map of columns and values to insert
 func (stmt *InsertStmt) ValueMap(vals map[string]interface{}) *InsertStmt {
-	for col, val := range vals {
-		stmt.InsCols = append(stmt.InsCols, col)
+	keys := make([]string, len(vals))
+	i := 0
+	for key := range vals {
+		keys[i] = key
+		i++
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		val, _ := vals[key]
+		stmt.InsCols = append(stmt.InsCols, key)
 		stmt.InsVals = append(stmt.InsVals, val)
 	}
 	return stmt

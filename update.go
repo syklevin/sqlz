@@ -2,15 +2,21 @@ package sqlz
 
 import (
 	"database/sql"
+	"sort"
 	"strings"
 
 	"github.com/jmoiron/sqlx"
 )
 
+type setClause struct {
+	column string
+	value  interface{}
+}
+
 // UpdateStmt represents an UPDATE statement
 type UpdateStmt struct {
 	Table      string
-	Updates    map[string]interface{}
+	Updates    []setClause
 	Conditions []WhereCondition
 	Return     []string
 	execer     sqlx.Ext
@@ -20,9 +26,8 @@ type UpdateStmt struct {
 // the specified table
 func (db *DB) Update(table string) *UpdateStmt {
 	return &UpdateStmt{
-		Table:   table,
-		Updates: make(map[string]interface{}),
-		execer:  db.DB,
+		Table:  table,
+		execer: db.DB,
 	}
 }
 
@@ -30,9 +35,8 @@ func (db *DB) Update(table string) *UpdateStmt {
 // the specified table
 func (tx *Tx) Update(table string) *UpdateStmt {
 	return &UpdateStmt{
-		Table:   table,
-		Updates: make(map[string]interface{}),
-		execer:  tx.Tx,
+		Table:  table,
+		execer: tx.Tx,
 	}
 }
 
@@ -40,15 +44,23 @@ func (tx *Tx) Update(table string) *UpdateStmt {
 // can be chained together to modify multiple columns. Set can also be chained
 // with calls to SetMap
 func (stmt *UpdateStmt) Set(col string, value interface{}) *UpdateStmt {
-	stmt.Updates[col] = value
+	stmt.Updates = append(stmt.Updates, setClause{column: col, value: value})
 	return stmt
 }
 
 // SetMap receives a map of columns and values. Multiple calls to both Set and
 // SetMap can be chained to modify multiple columns.
 func (stmt *UpdateStmt) SetMap(updates map[string]interface{}) *UpdateStmt {
-	for col, value := range updates {
-		stmt.Updates[col] = value
+	keys := make([]string, len(updates))
+	i := 0
+	for key := range updates {
+		keys[i] = key
+		i++
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		val, _ := updates[key]
+		stmt = stmt.Set(key, val)
 	}
 	return stmt
 }
@@ -77,7 +89,8 @@ func (stmt *UpdateStmt) ToSQL(rebind bool) (asSQL string, bindings []interface{}
 
 	var updates []string
 
-	for col, val := range stmt.Updates {
+	for _, upd := range stmt.Updates {
+		col, val := upd.column, upd.value
 		if fn, isFn := val.(UpdateFunction); isFn {
 			var args []string
 			for _, arg := range fn.Arguments {

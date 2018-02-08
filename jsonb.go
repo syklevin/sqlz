@@ -1,6 +1,7 @@
 package sqlz
 
 import (
+	"sort"
 	"strings"
 )
 
@@ -14,7 +15,15 @@ type JSONBBuilder struct {
 }
 
 func BuildJSONBObject(in map[string]interface{}) (out JSONBBuilder) {
-	for key, val := range in {
+	keys := make([]string, len(in))
+	i := 0
+	for key := range in {
+		keys[i] = key
+		i++
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		val, _ := in[key]
 		out.Bindings = append(out.Bindings, key, val)
 	}
 
