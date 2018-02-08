@@ -1,6 +1,7 @@
 package sqlz
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -301,32 +302,43 @@ func ForKeyShare() *LockClause {
 // bindings. It is used internally by GetRow and GetAll, but is
 // exported if you wish to use it directly.
 func (stmt *SelectStmt) ToSQL(rebind bool) (asSQL string, bindings []interface{}) {
-	var clauses = []string{"SELECT"}
+
+	var buf bytes.Buffer
+
+	buf.WriteString("SELECT")
+
+	// var clauses = []string{"SELECT"}
 
 	if stmt.IsDistinct {
-		clauses = append(clauses, "DISTINCT")
+		buf.WriteString(" DISTINCT")
+		// clauses = append(clauses, "DISTINCT")
 		if len(stmt.DistinctColumns) > 0 {
-			clauses = append(clauses, "ON ("+strings.Join(stmt.DistinctColumns, ", ")+")")
+			buf.WriteString(" ON (" + strings.Join(stmt.DistinctColumns, ", ") + ")")
+			// clauses = append(clauses, "ON ("+strings.Join(stmt.DistinctColumns, ", ")+")")
 		}
 	}
 
 	if len(stmt.Columns) == 0 {
-		clauses = append(clauses, "*")
+		buf.WriteString(" *")
+		// clauses = append(clauses, "*")
 	} else {
-		clauses = append(clauses, strings.Join(stmt.Columns, ", "))
+		buf.WriteString(" " + strings.Join(stmt.Columns, ", "))
+		// clauses = append(clauses, strings.Join(stmt.Columns, ", "))
 	}
-
-	clauses = append(clauses, "FROM "+stmt.Table)
+	buf.WriteString(" FROM " + stmt.Table)
+	// clauses = append(clauses, "FROM "+stmt.Table)
 
 	for _, join := range stmt.Joins {
 		onClause, joinBindings := parseConditions(join.Conditions)
 
 		if join.ResultSet != nil {
 			rsSQL, rsBindings := join.ResultSet.ToSQL(false)
-			clauses = append(clauses, join.Type.String()+" ("+rsSQL+") "+join.Table+" ON "+onClause)
+			// clauses = append(clauses, join.Type.String()+" ("+rsSQL+") "+join.Table+" ON "+onClause)
+			buf.WriteString(" " + join.Type.String() + " (" + rsSQL + ") " + join.Table + " ON " + onClause)
 			bindings = append(bindings, rsBindings...)
 		} else {
-			clauses = append(clauses, join.Type.String()+" "+join.Table+" ON "+onClause)
+			// clauses = append(clauses, join.Type.String()+" "+join.Table+" ON "+onClause)
+			buf.WriteString(" " + join.Type.String() + " " + join.Table + " ON " + onClause)
 		}
 
 		// add the join condition bindings (this MUST happen after adding the clause
@@ -338,17 +350,20 @@ func (stmt *SelectStmt) ToSQL(rebind bool) (asSQL string, bindings []interface{}
 	if len(stmt.Conditions) > 0 {
 		whereClause, whereBindings := parseConditions(stmt.Conditions)
 		bindings = append(bindings, whereBindings...)
-		clauses = append(clauses, "WHERE "+whereClause)
+		// clauses = append(clauses, "WHERE "+whereClause)
+		buf.WriteString(" WHERE " + whereClause)
 	}
 
 	if len(stmt.Grouping) > 0 {
-		clauses = append(clauses, "GROUP BY "+strings.Join(stmt.Grouping, ", "))
+		// clauses = append(clauses, "GROUP BY "+strings.Join(stmt.Grouping, ", "))
+		buf.WriteString(" GROUP BY " + strings.Join(stmt.Grouping, ", "))
 	}
 
 	if len(stmt.GroupConditions) > 0 {
 		groupByClause, groupBindings := parseConditions(stmt.GroupConditions)
 		bindings = append(bindings, groupBindings...)
-		clauses = append(clauses, "HAVING "+groupByClause)
+		// clauses = append(clauses, "HAVING "+groupByClause)
+		buf.WriteString(" HAVING " + groupByClause)
 	}
 
 	if len(stmt.Ordering) > 0 {
@@ -356,11 +371,13 @@ func (stmt *SelectStmt) ToSQL(rebind bool) (asSQL string, bindings []interface{}
 		for _, order := range stmt.Ordering {
 			ordering = append(ordering, order.ToSQL())
 		}
-		clauses = append(clauses, "ORDER BY "+strings.Join(ordering, ", "))
+		// clauses = append(clauses, "ORDER BY "+strings.Join(ordering, ", "))
+		buf.WriteString(" ORDER BY " + strings.Join(ordering, ", "))
 	}
 
 	if stmt.LimitTo > 0 {
-		clauses = append(clauses, fmt.Sprintf("LIMIT %d", stmt.LimitTo))
+		// clauses = append(clauses, fmt.Sprintf("LIMIT %d", stmt.LimitTo))
+		buf.WriteString(fmt.Sprintf(" LIMIT %d", stmt.LimitTo))
 	}
 
 	if stmt.OffsetFrom > 0 {
@@ -368,11 +385,12 @@ func (stmt *SelectStmt) ToSQL(rebind bool) (asSQL string, bindings []interface{}
 		if stmt.OffsetRows > 0 {
 			offset += fmt.Sprintf(" %d", stmt.OffsetRows)
 		}
-		clauses = append(clauses, "OFFSET "+offset)
+		// clauses = append(clauses, "OFFSET "+offset)
+		buf.WriteString(" OFFSET " + offset)
 	}
 
 	for _, lock := range stmt.Locks {
-		var lockClause []string
+		// var lockClause []string
 
 		var lockStrength string
 		switch lock.Strength {
@@ -387,23 +405,26 @@ func (stmt *SelectStmt) ToSQL(rebind bool) (asSQL string, bindings []interface{}
 		default:
 			continue
 		}
-		lockClause = append(lockClause, lockStrength)
+		buf.WriteString(" " + lockStrength)
+		// lockClause = append(lockClause, lockStrength)
 
 		if len(lock.Tables) > 0 {
-			lockClause = append(lockClause, "OF "+strings.Join(lock.Tables, ", "))
+			// lockClause = append(lockClause, "OF "+strings.Join(lock.Tables, ", "))
+			buf.WriteString(" OF " + strings.Join(lock.Tables, ", "))
 		}
 
 		switch lock.Wait {
 		case LockNoWait:
-			lockClause = append(lockClause, "NOWAIT")
+			// lockClause = append(lockClause, "NOWAIT")
+			buf.WriteString(" NOWAIT")
 		case LockSkipLocked:
-			lockClause = append(lockClause, "SKIP LOCKED")
+			// lockClause = append(lockClause, "SKIP LOCKED")
+			buf.WriteString(" SKIP LOCKED")
 		}
-
-		clauses = append(clauses, strings.Join(lockClause, " "))
 	}
 
-	asSQL = strings.Join(clauses, " ")
+	// asSQL = strings.Join(clauses, " ")
+	asSQL = buf.String()
 
 	if rebind {
 		if db, ok := stmt.queryer.(*sqlx.DB); ok {
